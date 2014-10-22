@@ -1,0 +1,127 @@
+import static gradle.plugins.provisioning.types.BootProto.*
+
+
+
+buildscript {
+  repositories {
+    jcenter()
+	mavenCentral()
+	mavenLocal()
+  }
+  dependencies {
+	classpath 'com.github.danveloper.provisioning:provisioning-gradle-plugin:0.4'
+    classpath "io.ratpack:ratpack-gradle:0.9.5"
+	classpath 'com.netflix.nebula:gradle-ospackage-plugin:1.9.1'
+
+  }
+}
+
+apply plugin: 'provisioning'
+apply plugin: 'os-package'
+apply plugin: "ratpack-groovy"
+apply plugin: "idea"
+
+repositories {
+  jcenter()
+}
+
+dependencies {
+/*
+  compile 'com.github.stephenc.java-iso-tools:loop-fs-iso-impl:2.0.0'
+  compile 'com.github.stephenc.java-iso-tools:iso9660-writer:2.0.0'
+  compile 'org.virtualbox:vboxjws:4.1.4'
+  compile 'com.amazonaws:aws-java-sdk:1.7.1'
+*/
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.8'
+}
+
+ospackage {
+    release '1'
+    os = LINUX // only applied to RPM
+    from ('build/libs') {
+        into '/opt/apps'
+        include '**/*-fat.jar'
+    }
+}
+
+// buildRpm and buildDeb are implicitly created, but can still be configured if needed
+
+buildRpm {
+	packageName = 'mywebapp'
+    arch = NOARCH
+	os = LINUX
+}
+
+provisioning {
+  installImage = "http://www.gtlib.gatech.edu/pub/centos/6/isos/x86_64/CentOS-6.5-x86_64-netinstall.iso"
+
+  // generated with "grub-crypt"
+  rootpw       = '$6$M2N0GvDMV.hro4Nj$6/4W1SmGuWs8fscbdNLfp4fGFpEt93Y7kCNi8jnjN5JIkPy8YJGkkjCwImyXtCiheMyAkUR24IPgcrfeIliB7/'
+
+  network {
+    device("eth0") {
+      bootproto = DHCP
+      onboot    = true
+      ipv6      = false
+    }
+  }
+
+  partitioning {
+    clear(init: true)
+
+    part {
+      mntpoint = "/"
+      fstype   = "ext4"
+      size     = 1
+      grow     = true
+    }
+
+    part {
+      mntpoint    = "swap"
+      recommended = true
+    }
+  }
+
+  packages {
+    // or, perhaps more preferrably, a network-local repo
+    url "http://www.gtlib.gatech.edu/pub/centos/6/os/x86_64/"
+
+    // some other repo
+    repo("extra") {
+      "http://192.168.0.106/project-repo"
+    }
+
+    // kickstart package groups
+    group "base"
+    group "core"
+    group "console-internet"
+    group "server-platform"
+
+    // These packages come from the "extra" repo
+    pkg   "jdk"
+    pkg   "apache-tomcat"
+    pkg   "hello-webapp"
+  }
+
+  postInstall {
+    '''\
+      |echo "export JAVA_HOME=/usr/java/latest" >> /etc/profile.d/java.sh
+      |rm /usr/bin/java && ln -s /usr/java/latest/bin/java /usr/bin/java
+    '''.stripMargin()
+  }
+
+  vbox {
+    apiUrl   = "http://ip6-localhost:18083" // required
+    name     = "web" // required
+    //home     = "/opt/vbox" // optional
+    //username = "user" // optional
+    //password = "pass" // optional
+  }
+
+}
+
+
+
